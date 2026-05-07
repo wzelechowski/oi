@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.metrics import silhouette_score, adjusted_rand_score, homogeneity_score, completeness_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 import plots
@@ -85,3 +86,20 @@ def draw_plots(X, y_true, algorithm, file):
 
     else:
         print(f"[{file}] Brak modeli spełniających warunki (minimum 2 klastry) do narysowania diagramu.")
+
+def load_classification_data(filepath, train_size=0.8, test_size=0.2, random_state=42):
+    df = pd.read_csv(filepath, sep=';')
+    numeric_data = df.select_dtypes(include=["number"])
+
+    X = numeric_data.iloc[:, :-1].to_numpy()
+    y = numeric_data.iloc[:, -1].to_numpy()
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, train_size=train_size, test_size=test_size, random_state=random_state, stratify=y
+    )
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    return X_train_scaled, X_test_scaled, y_train, y_test
