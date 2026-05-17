@@ -1,9 +1,14 @@
 from torch.utils.data import DataLoader
 
 from extracted_features_dataset import ExtractedFeaturesDataset
+from imagenette_2d_cnn import Imagenette2DCNN
+from imagenette_standard_cnn import ImagenetteStandardCNN
+from mnist2dcnn import Mnist2DCNN
+from mnist_standard_cnn import MnistStandardCNN
 from plots import plot_decision_boundaries, plot_confusion_matrix, plot_feature_metrics, voronoi
 from simple_mlp import SimpleMLP
-from utlis import calculate_decision_boundaries, evaluate_model, train_model, calculate_feature_metrics
+from utlis import calculate_decision_boundaries, evaluate_model, train_model, calculate_feature_metrics, \
+    get_mnist_datasets, get_imagenette_datasets, run_experiment
 
 
 def run1():
@@ -74,5 +79,16 @@ def run1():
 
             plot_decision_boundaries(xx, yy, Z, X_test_plot, y_test_plot, title="Granice decyzyjne MLP (MNIST 2 cechy)")
 
+
 def run2():
-    pass
+    mnist_train, mnist_test = get_mnist_datasets()
+    imagenette_train, imagenette_test = get_imagenette_datasets()
+
+    run_experiment("MNIST - Standard CNN", MnistStandardCNN(), mnist_train, mnist_test, is_2d=False, epochs=10)
+    run_experiment("MNIST - CNN 2 Cechy", Mnist2DCNN(), mnist_train, mnist_test, is_2d=True, epochs=15)
+
+    if imagenette_train is not None:
+        run_experiment("Imagenette - Standard CNN", ImagenetteStandardCNN(), imagenette_train, imagenette_test,
+                       is_2d=False, epochs=10)
+        run_experiment("Imagenette - CNN 2 Cechy", Imagenette2DCNN(), imagenette_train, imagenette_test, is_2d=True,
+                       epochs=15)

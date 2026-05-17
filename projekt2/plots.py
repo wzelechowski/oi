@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import ListedColormap
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.neighbors import KNeighborsClassifier
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -46,6 +47,32 @@ def voronoi(X, labels, title, y_true=None):
     plt.show()
 
 
+def plot_decision_boundaries(xx, yy, Z, X, y, title="Granice decyzyjne", class_names=None):
+    plt.figure(figsize=(11, 8))
+
+    cmap = plt.get_cmap('tab10', 10)
+
+    contour = plt.contourf(xx, yy, Z, alpha=0.3, cmap=cmap, levels=np.arange(-0.5, 10.5, 1))
+
+    scatter = plt.scatter(X[:1000, 0], X[:1000, 1], c=y[:1000],
+                          cmap=cmap, edgecolors='k', s=30, alpha=0.8,
+                          vmin=-0.5, vmax=9.5)
+
+    plt.title(title, fontsize=14)
+    plt.xlabel('Cecha 1 (Suma jasności / Ink)')
+    plt.ylabel('Cecha 2 (Symetria)')
+
+    if class_names is None:
+        class_names = [f"Klasa {i}" for i in range(10)]
+
+    handles, _ = scatter.legend_elements()
+    plt.legend(handles, class_names, title="Klasy", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_feature_metrics(results):
     names = list(results.keys())
 
@@ -80,21 +107,18 @@ def plot_confusion_matrix(cm, title):
     plt.title(title)
     plt.show()
 
-def plot_decision_boundaries(xx, yy, Z, X, y, title="Granice decyzyjne MLP"):
-    plt.figure(figsize=(10, 8))
-    cmap_background = plt.get_cmap('tab10')
 
-    plt.contourf(xx, yy, Z, alpha=0.3, cmap=cmap_background)
 
-    scatter = plt.scatter(X[:1000, 0], X[:1000, 1], c=y[:1000], cmap=cmap_background,
-                          edgecolors='k', s=20, alpha=0.8)
+def plot_learning_curves(train_acc_history, test_acc_history, title="Krzywe uczenia"):
+    plt.figure(figsize=(10, 6))
+    epochs = range(1, len(train_acc_history) + 1)
+
+    plt.plot(epochs, train_acc_history, label='Accuracy Treningowe', marker='o')
+    plt.plot(epochs, test_acc_history, label='Accuracy Testowe', marker='s')
 
     plt.title(title)
-    plt.xlabel('Cecha 1 (Ilość tuszu)')
-    plt.ylabel('Cecha 2 (Symetria)')
-
-    handles, labels = scatter.legend_elements()
-    plt.legend(handles, [str(i) for i in range(10)], title="Cyfry", bbox_to_anchor=(1.05, 1), loc='upper left')
-
-    plt.tight_layout()
+    plt.xlabel('Epoka')
+    plt.ylabel('Accuracy (%)')
+    plt.legend()
+    plt.grid(True)
     plt.show()

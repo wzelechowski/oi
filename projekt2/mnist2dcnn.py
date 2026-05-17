@@ -5,24 +5,33 @@ import torch.nn.functional as F
 
 class Mnist2DCNN(nn.Module):
     def __init__(self):
-        super(Mnist2DCNN).__init__()
-        self.conv1 = nn.Conv2d(1, 16, 3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
+        super().__init__()
 
-        self.fc1 = nn.Linear(1568, 128)
-        self.fc_features = nn.Linear(128, 2)
-        self.fc_classifier = nn.Linear(2, 10)
+        self.feature_extractor = nn.Sequential(
+            nn.Conv2d(1, 16, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(16, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2)
+        )
+
+        self.dim_reducer = nn.Sequential(
+            nn.Linear(32 * 7 * 7, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2)
+        )
+
+        self.final_classifier = nn.Linear(2, 10)
 
     def forward(self, x, return_features=False):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1)
-        x = F.relu(self.fc1(x))
-        features_2d = self.fc_features(x)
-        logits = self.fc_classifier(features_2d)
+        features = self.feature_extractor(x)
+        flat_features = torch.flatten(features, 1)
+
+        features_2d = self.dim_reducer(flat_features)
+
+        logits = self.final_classifier(features_2d)
 
         if return_features:
             return logits, features_2d
-
         return logits

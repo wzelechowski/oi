@@ -1,39 +1,42 @@
 import numpy as np
 import torch
+import torchvision
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score, homogeneity_score, completeness_score, silhouette_score, \
     confusion_matrix
-from torch import nn, optim
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
-def train_model(model, train_loader, learning_rate=0.01, num_epochs=20):
+from plots import plot_confusion_matrix, plot_decision_boundaries, plot_learning_curves
+
+import torch.optim as optim
+import torch.nn as nn
+
+def train_model(model, train_loader, test_loader, learning_rate=0.001, num_epochs=10):
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    train_acc_history = []
+    test_acc_history = []
 
     for epoch in range(num_epochs):
-        running_loss = 0.0
-        correct = 0
-        total = 0
-
-        for features, labels in train_loader:
+        model.train()
+        for inputs, labels in train_loader:
             optimizer.zero_grad()
-            outputs = model(features)
+            outputs = model(inputs)
             loss = criterion(outputs, labels)
-
             loss.backward()
-
             optimizer.step()
 
-            running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+        acc_tr, _ = evaluate_model(model, train_loader)
+        acc_te, _ = evaluate_model(model, test_loader)
 
-        epoch_loss = running_loss / len(train_loader)
-        epoch_acc = 100 * correct / total
-        print(f"Epoka [{epoch + 1}/{num_epochs}], Strata: {epoch_loss:.4f}, Dokładność: {epoch_acc:.2f}%")
+        train_acc_history.append(acc_tr)
+        test_acc_history.append(acc_te)
 
-    print("Trening zakończony!")
-    return model
+        print(f"Epoka [{epoch + 1}/{num_epochs}], Acc Train: {acc_tr:.2f}%, Acc Test: {acc_te:.2f}%")
+
+    return model, train_acc_history, test_acc_history
 
 
 def calculate_feature_metrics(X_dict, y_true):
@@ -102,3 +105,90 @@ def calculate_decision_boundaries(model, X, h=0.05):
     Z = preds.numpy().reshape(xx.shape)
 
     return xx, yy, Z
+
+def get_mnist_datasets():
+    print("Pobieranie zbioru MNIST...")
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    train_ds = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+    test_ds = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    return train_ds, test_ds
+
+def get_imagenette_datasets():
+    print("Pobieranie zbioru Imagenette...")
+    transform = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
+    try:
+        train_ds = torchvision.datasets.Imagenette(root='./data', split='train', size='160px', download=True, transform=transform)
+        test_ds = torchvision.datasets.Imagenette(root='./data', split='val', size='160px', download=True, transform=transform)
+        return train_ds, test_ds
+    except AttributeError:
+        print("UWAGA: Brak wbudowanego Imagenette w Twojej wersji torchvision.")
+        return None, None
+
+def run_experiment(name, model, train_ds, test_ds, is_2d, epochs=10, batch_size=64):
+    print(f"\n" + "=" * 50)
+    print(f"URUCHAMIAM: {name}")
+    print("=" * 50)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True)
+
+    print(f"Rozpoczynam trening ({epochs} epok)...")
+    trained_model, train_acc_hist, test_acc_hist = train_model(
+        model, train_loader, test_loader, learning_rate=0.001, num_epochs=epochs
+    )
+
+    print("Generowanie krzywych uczenia...")
+    plot_learning_curves(train_acc_hist, test_acc_hist, title=f"Krzywe uczenia - {name}")
+
+    print("Generowanie macierzy (TRENING)...")
+    acc_tr, cm_tr = evaluate_model(trained_model, train_loader)
+    plot_confusion_matrix(cm_tr, title=f"Macierz Pomyłek (TRENING) - {name}\n(Acc: {acc_tr:.2f}%)")
+
+    print("Generowanie macierzy (TEST)...")
+    acc_te, cm_te = evaluate_model(trained_model, test_loader)
+    plot_confusion_matrix(cm_te, title=f"Macierz Pomyłek (TEST) - {name}\n(Acc: {acc_te:.2f}%)")
+
+    if is_2d:
+        print(f"Generowanie granic decyzyjnych dla {name}...")
+        trained_model.eval()
+        features_list, labels_list = [], []
+
+        plot_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True)
+
+        with torch.no_grad():
+            for images, labels in plot_loader:
+                _, features = trained_model(images, return_features=True)
+                features_list.append(features)
+                labels_list.append(labels)
+                if len(features_list) * batch_size >= 1000:
+                    break
+
+        X_plot = torch.cat(features_list).numpy()
+        y_plot = torch.cat(labels_list).numpy()
+
+        class ClassifierWrapper(torch.nn.Module):
+            def __init__(self, classifier_layer):
+                super().__init__()
+                self.layer = classifier_layer
+
+            def forward(self, x):
+                return self.layer(x)
+
+        clf_wrapper = ClassifierWrapper(trained_model.final_classifier)
+        xx, yy, Z = calculate_decision_boundaries(clf_wrapper, X_plot)
+
+        if "MNIST" in name:
+            labels_names = [f"Cyfra {i}" for i in range(10)]
+        else:
+            labels_names = ['Ryba (Tench)', 'Pies (Springer)', 'Odtwarzacz Kaset', 'Piła łańcuchowa',
+                            'Kościół', 'Wolsztyn', 'Śmieciarka', 'Dystrybutor paliwa', 'Piłka golfowa', 'Spadochron']
+
+        plot_decision_boundaries(xx, yy, Z, X_plot, y_plot, title=f"Granice decyzyjne - {name}",
+                                 class_names=labels_names)
