@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import ListedColormap
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.neighbors import KNeighborsClassifier
 from scipy.spatial import Voronoi, voronoi_plot_2d
+from torchvision import transforms
+
 
 def voronoi(X, labels, title, y_true=None):
     plt.figure(figsize=(10, 8))
@@ -121,4 +122,48 @@ def plot_learning_curves(train_acc_history, test_acc_history, title="Krzywe ucze
     plt.ylabel('Accuracy (%)')
     plt.legend()
     plt.grid(True)
+    plt.show()
+
+def plot_augmentation_examples(dataset, aug1_transform, title="Augmentacja", is_mnist=False):
+    class_indices = {}
+    idx = 0
+    while len(class_indices) < 10 and idx < len(dataset):
+        _, label = dataset[idx]
+        if label not in class_indices:
+            class_indices[label] = idx
+        idx += 1
+
+    sorted_classes = sorted(class_indices.keys())
+
+    fig, axes = plt.subplots(10, 2, figsize=(8, 20))
+
+    for i, cls in enumerate(sorted_classes):
+        dataset_idx = class_indices[cls]
+        img, _ = dataset[dataset_idx]
+
+        orig_tensor = transforms.ToTensor()(img)
+        if is_mnist:
+            axes[i, 0].imshow(orig_tensor.squeeze(), cmap='gray')
+        else:
+            axes[i, 0].imshow(orig_tensor.permute(1, 2, 0))
+
+        if i == 0:
+            axes[i, 0].set_title("Brak (Oryginał)", fontsize=12, fontweight='bold')
+        axes[i, 0].set_ylabel(f"Klasa {cls}", fontsize=12, fontweight='bold', rotation=0, labelpad=40, va='center')
+        axes[i, 0].set_xticks([])
+        axes[i, 0].set_yticks([])
+
+        img_aug1 = aug1_transform(img)
+        if is_mnist:
+            axes[i, 1].imshow(img_aug1.squeeze(), cmap='gray')
+        else:
+            img_aug1 = img_aug1 * 0.5 + 0.5
+            axes[i, 1].imshow(img_aug1.permute(1, 2, 0).clip(0, 1))
+
+        if i == 0:
+            axes[i, 1].set_title("Augmentacja", fontsize=12, fontweight='bold')
+        axes[i, 1].axis("off")
+
+    plt.suptitle(f"Przykłady dla każdej klasy - {title}", fontsize=14, fontweight='bold', y=0.99)
+    plt.tight_layout()
     plt.show()

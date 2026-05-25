@@ -1,14 +1,23 @@
+import numpy as np
+import torch
 from torch.utils.data import DataLoader
+from torchvision import datasets
 
 from extracted_features_dataset import ExtractedFeaturesDataset
 from imagenette_2d_cnn import Imagenette2DCNN
 from imagenette_standard_cnn import ImagenetteStandardCNN
 from mnist2dcnn import Mnist2DCNN
 from mnist_standard_cnn import MnistStandardCNN
-from plots import plot_decision_boundaries, plot_confusion_matrix, plot_feature_metrics, voronoi
+from plots import plot_decision_boundaries, plot_confusion_matrix, plot_feature_metrics, voronoi, \
+    plot_augmentation_examples
 from simple_mlp import SimpleMLP
-from utlis import calculate_decision_boundaries, evaluate_model, train_model, calculate_feature_metrics, \
-    get_mnist_datasets, get_imagenette_datasets, run_experiment
+from utlis import (
+    get_mnist_datasets, get_imagenette_datasets, get_balanced_subset,
+    train_model, evaluate_model,
+    mnist_base_transform, mnist_aug1,
+    imagenette_base_transform, imagenette_aug1, run_experiment, calculate_decision_boundaries,
+    calculate_feature_metrics
+)
 
 
 def run1():
@@ -92,3 +101,60 @@ def run2():
                        is_2d=False, epochs=10)
         run_experiment("Imagenette - CNN 2 Cechy", Imagenette2DCNN(), imagenette_train, imagenette_test, is_2d=True,
                        epochs=15)
+
+
+def run3():
+    print("\n" + "="*50)
+    print("ROZPOCZYNAM EKSPERYMENT 2: Augmentacja i rozmiar zbioru")
+    print("="*50)
+    raw_mnist = datasets.MNIST(root='./data', train=True, download=True)
+    plot_augmentation_examples(raw_mnist, mnist_aug1, title="MNIST Augmentacja", is_mnist=True)
+    raw_imagenette = datasets.Imagenette(root='./data', split='train', size='160px', download=True)
+    plot_augmentation_examples(raw_imagenette, imagenette_aug1, title="Imagenette Augmentacja", is_mnist=False)
+    experiments = [
+        ("MNIST Standard CNN", lambda: MnistStandardCNN(), get_mnist_datasets,
+         {"Brak": mnist_base_transform, "Augmentacja": mnist_aug1}, 60000, 10),
+
+        ("MNIST 2D CNN", lambda: Mnist2DCNN(), get_mnist_datasets,
+         {"Brak": mnist_base_transform, "Augmentacja": mnist_aug1}, 60000, 15),
+
+        ("Imagenette Standard CNN", lambda: ImagenetteStandardCNN(), get_imagenette_datasets,
+         {"Brak": imagenette_base_transform, "Augmentacja": imagenette_aug1}, 9469, 10),
+
+        ("Imagenette 2D CNN", lambda: Imagenette2DCNN(), get_imagenette_datasets,
+         {"Brak": imagenette_base_transform, "Augmentacja": imagenette_aug1}, 9469, 15)
+    ]
+    subset_sizes = ['all', 100, 200, 1000]
+    num_repetitions = 10
+    for exp_name, model_factory, get_data_fn, transforms_dict, total_size, base_epochs in experiments:
+        print(f"\n\n>>> BADA: {exp_name} <<<")
+        print(f"{'Augmentacja':<15} | {'all':<15} | {'100':<15} | {'200':<15} | {'1000':<15}")
+        print("-" * 85)
+        for aug_name, transform in transforms_dict.items():
+            results_row = [aug_name.ljust(15)]
+            train_full_ds, test_ds = get_data_fn(train_transform=transform)
+            if train_full_ds is None:
+                continue
+            test_loader = DataLoader(test_ds, batch_size=64, shuffle=False)
+            for size in subset_sizes:
+                if size == 'all':
+                    epochs = base_epochs
+                else:
+                    epochs = min(base_epochs * (total_size // size), 100)
+                accuracies = []
+                best_acc = 0.0
+                for i in range(num_repetitions):
+                    model = model_factory()
+                    subset = get_balanced_subset(train_full_ds, size)
+                    train_loader = DataLoader(subset, batch_size=32, shuffle=True)
+                    trained_model, _, _ = train_model(model, train_loader, test_loader, num_epochs=epochs)
+                    acc_te, _ = evaluate_model(trained_model, test_loader)
+                    accuracies.append(acc_te)
+                    if acc_te > best_acc:
+                        best_acc = acc_te
+                        safe_name = f"{exp_name.replace(' ', '_')}_{aug_name}_{size}.pth"
+                        torch.save(trained_model.state_dict(), safe_name)
+                mean_acc = np.mean(accuracies)
+                std_acc = np.std(accuracies)
+                results_row.append(f"{mean_acc:.2f}±{std_acc:.2f}%".ljust(15))
+            print(" | ".join(results_row))
